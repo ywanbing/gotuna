@@ -95,7 +95,7 @@ func TestStoringLoggedInUserToContext(t *testing.T) {
 	response := httptest.NewRecorder()
 
 	app := gotuna.App{
-		Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(fakeUser.GetID())),
+		Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(fakeUser.GetID()), "test"),
 		UserRepository: doubles.NewUserRepositoryStub(),
 	}
 
@@ -117,7 +117,7 @@ func TestSkipIfWeCannotFindUser(t *testing.T) {
 	response := httptest.NewRecorder()
 
 	app := gotuna.App{
-		Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy("")),
+		Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(""), "test"),
 		UserRepository: doubles.NewUserRepositoryStub(),
 	}
 
@@ -133,4 +133,30 @@ func TestSkipIfWeCannotFindUser(t *testing.T) {
 	assert.Equal(t, response.Code, http.StatusOK)
 	assert.Error(t, noUserErr)
 	assert.Equal(t, nil, userInContext)
+}
+
+func TestErrorIfWeCannotRetreiveAuthenticatedUserFromTheRepo(t *testing.T) {
+
+	// logged in user...
+	sess := doubles.MemUser1
+
+	// ...is not in the repo
+	repo := []gotuna.InMemoryUser{
+		doubles.MemUser2,
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+
+	app := gotuna.App{
+		Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(sess.GetID()), "test"),
+		UserRepository: gotuna.NewInMemoryUserRepository(repo),
+	}
+
+	middleware := app.StoreToContext()
+
+	middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	})).ServeHTTP(response, request)
+
+	assert.Equal(t, response.Code, http.StatusInternalServerError)
 }

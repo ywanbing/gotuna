@@ -60,6 +60,7 @@ func MakeApp(app App) App {
 	user.Use(app.Authenticate("/login"))
 	user.Handle("/", handlerHome(app)).Methods(http.MethodGet)
 	user.Handle("/profile", handlerProfile(app)).Methods(http.MethodGet, http.MethodPost)
+	user.Handle("/adduser", handlerAddUser(app)).Methods(http.MethodGet, http.MethodPost)
 	user.Handle("/logout", handlerLogout(app)).Methods(http.MethodPost)
 	user.Handle("/setlocale/{locale}", handlerChangeLocale(app)).Methods(http.MethodGet, http.MethodPost)
 
@@ -84,6 +85,7 @@ func handlerHome(app App) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		app.NewTemplatingEngine().
 			Set("message", app.Locale.T(app.Session.GetUserLocale(r), "Home")).
+			Set("users", app.UserRepository.(*gotuna.InMemoryUserRepository).Users).
 			Render(w, r, "app.html", "home.html")
 	})
 }
@@ -107,12 +109,15 @@ func handlerLogin(app App) http.HandlerFunc {
 		}
 
 		// user is ok, save to session
-		if err := app.Session.SetUserID(w, r, user.GetID()); err != nil {
-			handlerError(app).ServeHTTP(w, r)
-			return
-		}
-
+		app.Session.SetUserID(w, r, user.GetID())
 		app.Session.SetUserLocale(w, r, "en-US")
+
+		// log this event
+		app.Logger.Printf(
+			"%s ### User logged in: %s",
+			time.Now().Format(time.RFC3339),
+			user.(gotuna.InMemoryUser).Name,
+		)
 
 		flash(app, w, r, t(app, r, "Welcome"))
 
@@ -122,7 +127,18 @@ func handlerLogin(app App) http.HandlerFunc {
 
 func handlerLogout(app App) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		user, _ := gotuna.GetUserFromContext(r.Context())
+
+		// log this event
+		app.Logger.Printf(
+			"%s ### User logged out: %s",
+			time.Now().Format(time.RFC3339),
+			user.(gotuna.InMemoryUser).Name,
+		)
+
 		app.Session.Destroy(w, r)
+
 		http.Redirect(w, r, "/login", http.StatusFound)
 	})
 }
@@ -131,6 +147,41 @@ func handlerProfile(app App) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		app.NewTemplatingEngine().
 			Render(w, r, "app.html", "profile.html")
+	})
+}
+
+func handlerAddUser(app App) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tmpl := app.NewTemplatingEngine()
+
+		ctx := r.Context()
+		repo := app.UserRepository.(*gotuna.InMemoryUserRepository)
+
+		if r.Method == http.MethodGet {
+			tmpl.Render(w, r, "app.html", "adduser.html")
+			return
+		}
+
+		err := repo.AddUser(gotuna.InMemoryUser{
+			ID:       gotuna.GetParam(ctx, "id"),
+			Name:     gotuna.GetParam(ctx, "name"),
+			Email:    gotuna.GetParam(ctx, "email"),
+			Password: gotuna.GetParam(ctx, "password"),
+		})
+
+		if err != nil {
+			app.Session.Flash(w, r, gotuna.FlashMessage{
+				Message:   t(app, r, "Error"),
+				Kind:      "danger",
+				AutoClose: true,
+			})
+			tmpl.Render(w, r, "app.html", "adduser.html")
+			return
+		}
+
+		flash(app, w, r, t(app, r, "Success"))
+
+		http.Redirect(w, r, "/", http.StatusFound)
 	})
 }
 
@@ -163,9 +214,7 @@ func handlerError(app App) http.Handler {
 }
 
 func flash(app App, w http.ResponseWriter, r *http.Request, msg string) {
-	if err := app.Session.Flash(w, r, gotuna.NewFlash(msg)); err != nil {
-		app.Logger.Printf("%s %s %s %v", time.Now().Format(time.RFC3339), r.Method, r.URL.Path, err)
-	}
+	app.Session.Flash(w, r, gotuna.NewFlash(msg))
 }
 
 func t(app App, r *http.Request, s string) string {

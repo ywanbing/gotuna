@@ -1,13 +1,14 @@
-{{define "title"}}{{t "Login"}}{{end}}
+{{define "title"}}{{t "Log In"}}{{end}}
 
 {{define "content"}}
-  <div class="guest-form">
-    <form method="POST" action="/login">
+<div class="columns is-centered">
+  <div class="column is-narrow is-two-fifths">
+    <form method="POST" action="/login" class="box">
       {{csrf}}
       <div class="field">
         <label class="label">{{t "Email"}}</label>
         <div class="control">
-          <input class="input {{if index .Errors "email"}}is-danger{{end}}" type="email" name="email" placeholder="{{t "Email"}}" value="john@example.com">
+          <input class="input {{if index .Errors "email"}}is-danger{{end}}" name="email" placeholder="{{t "Email"}}" value="john@example.com">
         </div>
         <p class="help is-danger">{{index .Errors "email"}}</p>
       </div>
@@ -25,4 +26,5 @@
       </div>
     </form>
   </div>
+</div>
 {{end}}

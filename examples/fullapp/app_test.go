@@ -33,6 +33,8 @@ func TestRoutes(t *testing.T) {
 		{doubles.MemUser1.GetID(), "/login", http.MethodGet, http.StatusFound},
 		{doubles.MemUser1.GetID(), "/profile", http.MethodGet, http.StatusOK},
 		{doubles.MemUser2.GetID(), "/profile", http.MethodGet, http.StatusOK},
+		{doubles.MemUser1.GetID(), "/adduser", http.MethodGet, http.StatusOK},
+		{doubles.MemUser1.GetID(), "/adduser", http.MethodPost, http.StatusOK},
 	}
 
 	for _, r := range routes {
@@ -43,7 +45,7 @@ func TestRoutes(t *testing.T) {
 
 			app := fullapp.MakeApp(fullapp.App{
 				gotuna.App{
-					Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(r.userID)),
+					Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(r.userID), "test"),
 					Static:         doubles.NewFileSystemStub(map[string][]byte{}),
 					UserRepository: doubles.NewUserRepositoryStub(),
 					ViewFiles:      views.EmbededViews,
@@ -88,7 +90,7 @@ func TestLogin(t *testing.T) {
 
 		app := fullapp.MakeApp(fullapp.App{
 			gotuna.App{
-				Session:   gotuna.NewSession(sessions.NewCookieStore([]byte("abc"))),
+				Session:   gotuna.NewSession(sessions.NewCookieStore([]byte("abc")), "test"),
 				ViewFiles: views.EmbededViews,
 			},
 			middlewareCsrfStub,
@@ -108,7 +110,7 @@ func TestLogin(t *testing.T) {
 		response := httptest.NewRecorder()
 		app := fullapp.MakeApp(fullapp.App{
 			gotuna.App{
-				Session:        gotuna.NewSession(sessions.NewCookieStore([]byte("abc"))),
+				Session:        gotuna.NewSession(sessions.NewCookieStore([]byte("abc")), "test"),
 				UserRepository: doubles.NewUserRepositoryStub(),
 				ViewFiles:      views.EmbededViews,
 			},
@@ -128,7 +130,7 @@ func TestLogin(t *testing.T) {
 		response := httptest.NewRecorder()
 		app := fullapp.MakeApp(fullapp.App{
 			gotuna.App{
-				Session:        gotuna.NewSession(sessions.NewCookieStore([]byte("abc"))),
+				Session:        gotuna.NewSession(sessions.NewCookieStore([]byte("abc")), "test"),
 				UserRepository: doubles.NewUserRepositoryStub(),
 				ViewFiles:      views.EmbededViews,
 			},
@@ -146,7 +148,7 @@ func TestLogin(t *testing.T) {
 
 		app := fullapp.MakeApp(fullapp.App{
 			gotuna.App{
-				Session:        gotuna.NewSession(sessions.NewCookieStore([]byte("abc"))),
+				Session:        gotuna.NewSession(sessions.NewCookieStore([]byte("abc")), "test"),
 				UserRepository: doubles.NewUserRepositoryStub(),
 				ViewFiles:      views.EmbededViews,
 			},
@@ -171,13 +173,42 @@ func TestLogin(t *testing.T) {
 	})
 }
 
+func TestAddNewUserToTheRepo(t *testing.T) {
+	app := fullapp.MakeApp(fullapp.App{
+		gotuna.App{
+			Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(doubles.MemUser1.ID), "test"),
+			UserRepository: doubles.NewUserRepositoryStub(),
+			ViewFiles:      views.EmbededViews,
+		},
+		middlewareCsrfStub,
+	})
+
+	form := url.Values{}
+	form.Set("id", "8888")
+	form.Set("name", "Mike")
+	form.Set("email", "mike@example.com")
+	form.Set("password", "mike9")
+
+	request := httptest.NewRequest(http.MethodPost, "/adduser", strings.NewReader(form.Encode()))
+	request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+	app.Router.ServeHTTP(response, request)
+	assert.Redirects(t, response, "/", http.StatusFound)
+
+	user, err := app.UserRepository.GetUserByID("8888")
+	assert.NoError(t, err)
+	assert.Equal(t, "Mike", user.(gotuna.InMemoryUser).Name)
+	assert.Equal(t, "mike@example.com", user.(gotuna.InMemoryUser).Email)
+	assert.Equal(t, "mike9", user.(gotuna.InMemoryUser).Password)
+}
+
 func TestLogout(t *testing.T) {
 
 	user := doubles.MemUser1
 
 	app := fullapp.MakeApp(fullapp.App{
 		gotuna.App{
-			Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(user.GetID())),
+			Session:        gotuna.NewSession(doubles.NewGorillaSessionStoreSpy(user.GetID()), "test"),
 			ViewFiles:      views.EmbededViews,
 			UserRepository: doubles.NewUserRepositoryStub(),
 		},
